@@ -182,8 +182,9 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 					}
 					length += 6;
 					break;
+
 				default:
-					printf("Opcode 0F %02X ???\n", cPtr[1]);
+					printf("Opcode 0F %02X @ 0x%08X = ???\n", cPtr[1],cPtr);
 					return -1;
 			}
 			break;
@@ -279,7 +280,7 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 		// failure
 		//-----------------------------------------
 		default:
-			printf("Opcode %02X ???\n", *cPtr);
+			printf("Opcode %02X @ 0x%08X = ???\n", *cPtr,cPtr);
 			return -1;
 	}
 
