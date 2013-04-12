@@ -97,6 +97,8 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 		case 0x07: case 0x17: case 0x1F:
 		case 0x58: case 0x59: case 0x5A: case 0x5B:
 		case 0x5C: case 0x5D: case 0x5E: case 0x5F:
+		// INS/OUTS
+		case 0x6C: case 0x6D: case 0x6E: case 0x6F:
 		// RETF, RETN
 		case 0xC3: case 0xCB:
 		// NOP
@@ -227,11 +229,11 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 
 		// opcode extensions w/ imm8
 		case 0x80: case 0x82: case 0x83: case 0xC0:
-		case 0xC1: case 0xC6:
+		case 0xC1: case 0xC6: case 0x6B:
 			length += 1 + x86_instruction_length_mod_reg_rm(cPtr);
 			break;
 		// opcode extensions w/ imm16/32
-		case 0x81: case 0xC7:
+		case 0x81: case 0xC7: case 0x69:
 			length += 4 + x86_instruction_length_mod_reg_rm(cPtr);
 			break;
 
