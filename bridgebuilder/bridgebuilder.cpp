@@ -218,6 +218,7 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 		case 0x38: case 0x39: case 0x3A: case 0x3B: // CMP
 		case 0x84: case 0x85: case 0x86: case 0x87: // TEST, XCHG
 		case 0x88: case 0x89: case 0x8A: case 0x8B: // MOV
+		case 0x62: // BOUND
 		case 0xFF: // opcode extension
 		case 0x8D: // LEA ?
 			length += x86_instruction_length_mod_reg_rm(cPtr);
