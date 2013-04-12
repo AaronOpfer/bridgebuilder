@@ -48,6 +48,8 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 
 	int length = 0, j;
 
+	char operandSize = 4, addressSize = 4;
+
 	// cast the void pointer to char to make type conversions easier
 	unsigned char* cPtr = (unsigned char*)codePtr;
 
@@ -56,10 +58,12 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 		switch (cPtr[j]) {
 			case 0x66:
 				operandSizePrefix = true;
+				operandSize = 2;
 				length++;
 				continue;
 			case 0x67:
 				addressSizePrefix = true;
+				addressSize = 2;
 				length++;
 				continue;
 			case 0x2E: case 0x36: case 0x3E:
@@ -195,20 +199,12 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 		// MOV reg16/reg32, imm16/mm32
 		case 0xB8: case 0xB9: case 0xBA: case 0xBB:
 		case 0xBC: case 0xBD: case 0xBE: case 0xBF:
-			if (operandSizePrefix == true) {
-				length += 3;
-			} else {
-				length += 5;
-			}
+			length += 1 + operandSize;
 			break;
 
 		// MOV [E]AX, ptr [] (either direction)
 		case 0xA0: case 0xA1: case 0xA2: case 0xA3:
-			if (addressSizePrefix == true) {
-				length += 3;
-			} else {
-				length += 5;
-			}
+			length += 1 + addressSize;
 			break;
 
 		// MOD-REG-R/M operations
@@ -234,8 +230,18 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 			break;
 		// opcode extensions w/ imm16/32
 		case 0x81: case 0xC7: case 0x69:
-			length += 4 + x86_instruction_length_mod_reg_rm(cPtr);
+			length += operandSize + x86_instruction_length_mod_reg_rm(cPtr);
 			break;
+
+		// opcode extension w/ variable arguments
+		case 0xF7:
+			length += x86_instruction_length_mod_reg_rm(cPtr);
+			if (!(cPtr[1]&0x10) || (cPtr[1]&0x20)) {
+				length += operandSize;
+			}
+			break;
+
+			
 
 		//-----------------------------------------
 		// unrelocateable instructions
