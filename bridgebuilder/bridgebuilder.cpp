@@ -170,6 +170,11 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 			switch (cPtr[1]) {
 				// MOD-REG-R/M instructions
 				case 0xB6: case 0xB7: case 0xBE: case 0xBF:
+				// conditional SET instructions
+				case 0x90: case 0x91: case 0x92: case 0x93:
+				case 0x94: case 0x95: case 0x96: case 0x97:
+				case 0x98: case 0x99: case 0x9A: case 0x9B:
+				case 0x9C: case 0x9D: case 0x9E: case 0x9F:
 					length += 1 + x86_instruction_length_mod_reg_rm(&cPtr[1]);
 					break;
 				// conditional far jumps. Unrelocateable!
@@ -220,6 +225,7 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 		case 0x84: case 0x85: case 0x86: case 0x87: // TEST, XCHG
 		case 0x88: case 0x89: case 0x8A: case 0x8B: // MOV
 		case 0x62: // BOUND
+		case 0x63: // ARPL ?
 		case 0xFF: // opcode extension
 		case 0x8D: // LEA ?
 			length += x86_instruction_length_mod_reg_rm(cPtr);
