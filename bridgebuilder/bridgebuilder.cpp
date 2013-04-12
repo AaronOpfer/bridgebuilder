@@ -235,10 +235,15 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 			break;
 
 		// opcode extension w/ variable arguments
-		case 0xF7:
+		case 0xF6: case 0xF7:
 			length += x86_instruction_length_mod_reg_rm(cPtr);
-			if (!(cPtr[1]&0x10) || (cPtr[1]&0x20)) {
-				length += operandSize;
+			if (!(cPtr[1]&0x30)) {
+				// F6 is always 8bit, F7 is 16 or 32
+				if (*cPtr == 0xF6) {
+					length += 1;
+				} else {
+					length += operandSize;
+				}
 			}
 			break;
 
