@@ -4,7 +4,7 @@
 
 #include "bridgebuilder.h"
 
-#define TEST_MINIMUM_BYTES_DECODED 10
+#define TEST_MINIMUM_BYTES_DECODED 15
 
 bool run_opcode_test (const char* testName, void* codePtr, int desiredResult) {
 	int result = x86_instruction_length(codePtr,false);
@@ -26,11 +26,11 @@ bool run_import_test (const char* importName, void* fxnPtr) {
 			printf("Failure!");
 			return false;
 		}
-		printf("%08X: %d\n", codePtr, j);
+		//printf("%08X: %d\n", codePtr, j);
 
 		codePtr = &codePtr[j];
 	}
-	printf("%16s: %d\n", importName, codePtr - (unsigned char*)fxnPtr);
+	printf("%32s: %d\n", importName, codePtr - (unsigned char*)fxnPtr);
 	return true;
 }
 
