@@ -69,6 +69,7 @@ int main (int argc, char* argv[]) {
 	HMODULE kern32;
 	PIMAGE_NT_HEADERS nthdr;
 	PIMAGE_EXPORT_DIRECTORY imexp;
+	void* gcna,*gcnw;
 
 	DWORD *names, *funcs;
 	WORD* ords;
@@ -108,5 +109,12 @@ int main (int argc, char* argv[]) {
 		}
 	}
 
+	printf("Creating bridge for GetComputerNameA...\n");
+	gcna = GetProcAddress(kern32,"GetComputerNameA");
+	printf("bridge_create returned: %08X\n", bridge_create(gcna));
+
+	printf("Creating bridge for GetComputerNameW...\n");
+	gcnw = GetProcAddress(kern32,"GetComputerNameW");
+	printf("bridge_create returned: %08X\n", bridge_create(gcnw));
 	return 0;
 }

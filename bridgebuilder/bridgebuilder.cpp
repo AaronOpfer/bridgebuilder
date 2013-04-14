@@ -1,6 +1,79 @@
 #include <stdio.h>
+#include <string.h>
+#include "bridgebuilder.h"
+#include "mem/codepool.h"
 
-int x86_instruction_length_mod_reg_rm(unsigned char* cPtr) {
+void* bridge_create (void* unhookedFunction) {
+	#ifdef _WIN32
+		static const unsigned char msPrologueSignature[] = { 0x8B,0xFF,0x55,0x8B,0xEC,0x5D };
+	#endif
+
+	int operatorSize, instructionBytes = 0;
+	bool noRewrites = true;
+
+	unsigned char* bridge;
+
+	unsigned char jmpBytes[] = { 0xE9, 0, 0, 0, 0 };
+	unsigned char* codePtr = (unsigned char*)unhookedFunction;
+
+
+	// Windows-specific: detect Microsoft-specific do-nothing
+	// prologue code, and simply return the address after it. This
+	// will save a small amount of memory and computation.
+	#ifdef _WIN32
+	
+
+	if (memcmp(unhookedFunction, msPrologueSignature, 
+	           sizeof(msPrologueSignature)) == 0) {
+		return (void*)(size_t(unhookedFunction)+6);
+	}
+	#endif
+
+	// Determine how much memory we need to allocate ahead of time
+	while (instructionBytes < 5) {
+		operatorSize = x86_instruction_length(&codePtr[instructionBytes],true);
+		if (operatorSize == -1) {
+			// we failed to make the bridge, bail out!
+			return 0;
+		}
+		// we will have to relocate a jump
+		if (operatorSize == -2) {
+			noRewrites = false;
+			// TODO: write relative jmp/call rebase sizing
+			// functionality
+			return 0;
+		}
+		instructionBytes += operatorSize;
+	}
+
+	// now that we know how much memory we'll need to consume, we can
+	// use a slice of our shared memory page and write out the hook
+	// function.
+	bridge = (unsigned char*)codepool_alloc(instructionBytes+5);
+	if (!bridge) {
+		return 0;
+	}
+
+	// calculate our JMP function
+	*(unsigned long*)(&jmpBytes[1]) =  (unsigned long)unhookedFunction - (unsigned long)bridge - 5;
+
+	if (noRewrites == true) {
+		// we don't have to rebase anything, so we can do a niave copy.
+		codepool_unlock(bridge);
+		// copy in most of the code
+		memcpy(bridge,unhookedFunction,instructionBytes);
+		// and then write the JMP
+		memcpy(&bridge[instructionBytes],jmpBytes,5);
+		// relock the memory
+		codepool_lock(bridge);
+	}
+	return bridge;
+
+		
+	
+}
+
+int x86_instruction_length_mod_reg_rm (unsigned char* cPtr) {
 	// we're adding up the length a few bytes at a time,
 	// starting with the opcode and MOD-REG-R/M
 	int length = 2;

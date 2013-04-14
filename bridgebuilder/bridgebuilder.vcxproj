@@ -13,9 +13,11 @@
   <ItemGroup>
     <ClCompile Include="bridgebuilder.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="mem\codepool.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bridgebuilder.h" />
+    <ClInclude Include="mem\codepool.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{C37D14D8-40AE-43CE-A0EE-0FC24519028F}</ProjectGuid>

@@ -13,6 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
     </Filter>
+    <Filter Include="Source Files\mem">
+      <UniqueIdentifier>{44034592-63a6-45d8-a661-39ce3ae5ca32}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\mem">
+      <UniqueIdentifier>{8bc273a5-a265-4c4f-9652-ab03bc6d7be1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="bridgebuilder.cpp">
@@ -21,10 +27,16 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="mem\codepool.cpp">
+      <Filter>Header Files\mem</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bridgebuilder.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mem\codepool.h">
+      <Filter>Source Files\mem</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

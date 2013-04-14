@@ -21,11 +21,6 @@
  *
  * This code is NOT thread-safe.
  *
- * TODO: This code doesn't have a mechanism for reusing the memory of
- * hooks that have been removed from the pool. In fact, codepool_free 
- * does nothing. Is the added code complexity from tracking sub-page-sized
- * memory allocations worth it?
- *
  **/
 
 #pragma once
@@ -36,6 +31,9 @@
  *
  * Returns a pointer to a block of memory newCodeSize bytes in length
  * appropriate for dynamically generated code to be written to.
+ *
+ * Currently, due to how the virtual memory pool is sliced, newCodeSize
+ * must be less than 32 bytes.
  *
  * Note that this function does not remove write-protection from the
  * memory page this memory was sliced out of, if it was present. Also,
