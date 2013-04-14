@@ -35,7 +35,7 @@ bool run_import_test (const char* importName, void* fxnPtr) {
 }
 
 int main (int argc, char* argv[]) {
-	struct {
+	static const struct {
 		const char*  testName; void* codePtr; int desiredResult;
 	} testData[] = {
 		{ "NOP",             "\x90",                   1 },
@@ -64,12 +64,12 @@ int main (int argc, char* argv[]) {
 
 	};
 
-	int j,k=0;
+	unsigned int j,k=0;
 
 	HMODULE kern32;
 	PIMAGE_NT_HEADERS nthdr;
 	PIMAGE_EXPORT_DIRECTORY imexp;
-	void* gcna,*gcnw;
+	void *gcna,*gcnw, *hpfr, *bridge;
 
 	DWORD *names, *funcs;
 	WORD* ords;
@@ -111,10 +111,20 @@ int main (int argc, char* argv[]) {
 
 	printf("Creating bridge for GetComputerNameA...\n");
 	gcna = GetProcAddress(kern32,"GetComputerNameA");
-	printf("bridge_create returned: %08X\n", bridge_create(gcna));
+	bridge = bridge_create(gcna);
+	printf("bridge_create returned: %08X\n", bridge);
 
 	printf("Creating bridge for GetComputerNameW...\n");
 	gcnw = GetProcAddress(kern32,"GetComputerNameW");
 	printf("bridge_create returned: %08X\n", bridge_create(gcnw));
+
+	printf("Removing bridge for GetComputerNameA.\n");
+	bridge_destroy(bridge);
+
+	printf("Creating bridge for HeapFree...\n");
+	hpfr = GetProcAddress(kern32,"HeapFree");
+	printf("bridge_create returned: %08X\n", bridge_create(hpfr));
+
+
 	return 0;
 }
