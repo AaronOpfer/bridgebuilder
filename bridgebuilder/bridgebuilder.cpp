@@ -146,8 +146,9 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 				addressSize = 2;
 				length++;
 				continue;
-			case 0x2E: case 0x36: case 0x3E:
-			case 0x26: case 0x64: case 0x65:
+			case 0x26: case 0x2E:
+			case 0x36: case 0x3E:
+			case 0x64: case 0x65:
 				length++;
 				continue;
 				// prefix group 1
