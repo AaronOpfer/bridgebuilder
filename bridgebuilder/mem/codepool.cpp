@@ -8,13 +8,6 @@
  #include <sys/mman.h>
 #endif
 
-// this macro subtracts from ptr so that it is aligned with alignment,
-// assuming alignment is a power of two
-#define ALIGN_PTR(ptr,alignment) (void*)(((size_t)ptr) & ~((alignment)-1))
-
-#define SUB_IS_FREE(word,index) word&(1<<(index)*2)
-#define SUB_SET_ALLOC(word,index,dbl) word=word&(~(3<<((index)*2)));if(dbl)word=word|((dbl*2)<<((index)*2))
-#define SUB_SET_FREE(word,index) word=word&(~(3<<((index)*2)))|1<<((index)*2))
 
 struct pagedata_t {
 	void* page;
@@ -29,6 +22,8 @@ static size_t pageSize = 0;
 static size_t numPageSlices = 0;
 static size_t pageDataUnitSize = 0;
 
+
+
 // allocated off heap memory. Technically a pointer to an array of
 // pagedata_t's, but because pagedata_t's size depends on pageSize
 // and cannot be determined at compile time (even though it's almost
@@ -36,6 +31,74 @@ static size_t pageDataUnitSize = 0;
 // a void ptr, since we won't be able to use an index anyway, and will
 // be typecasting the hell out of this.
 static void* pageMetaDataArray; 
+
+
+__inline void* codepool_align_pointer (void* ptr, size_t alignment) {
+	return (void*)(size_t(ptr) & ~(alignment-1));
+}
+
+__inline bool pointer_to_sub (void* ptr, unsigned long** word,unsigned char* bitNum) {
+	size_t pageNum,ptrDistance;
+	
+	pagedata_t* pageMetaData;
+
+	void* pagePtr = codepool_align_pointer(ptr,pageSize);
+
+	ptrDistance = size_t(ptr) - size_t(pagePtr);
+
+	for (pageNum = numPages-1; pageNum >= 0; pageNum--) {
+
+		// Setting up pointer using maths, because we can't use an
+		// array index with variably-sized data
+		pageMetaData = (pagedata_t*)((char*)pageMetaDataArray 
+	                                         + pageDataUnitSize*pageNum);
+		
+		// we have found the page!
+		if (pagePtr == pageMetaData->page) {
+			*bitNum = (ptrDistance&64)/16;
+			*word = &pageMetaData->bitfield[ptrDistance/64];
+			return true;
+		}
+	}
+	// didn't find the page metadata.
+	return false;
+}
+
+__inline void* sub_to_pointer (pagedata_t* pageMetaData, size_t wordNum, size_t bitNum) {
+
+	return (void*)((size_t)pageMetaData->page +
+								(wordNum*sizeof(unsigned long)+bitNum)*16);
+}
+	
+
+__inline void sub_set_allocated (unsigned long *word, unsigned char index, bool isDouble) {
+	index *= 2;
+
+	// clear out the free bits
+	*word &= ~(3<<index);
+	// add the double bit if necessary
+	if(isDouble) {
+		*word |= 2 << index;
+	}
+}
+
+__inline void sub_set_free (unsigned long *word, unsigned char index) {
+	index *= 2;
+
+	// clear out the double bit
+	*word &= ~(3 << index);
+	// set the free bit
+	*word |= 1 << index;
+}
+
+__inline bool sub_is_free (unsigned long word, unsigned char index) {
+	return ((word&(1<<(index*2))) != 0);
+}
+
+__inline bool sub_is_dbl (unsigned long word, unsigned char index) {
+	return ((word&(2<<(index*2))) != 0);
+}
+
 
 bool codepool_addpage (void) {
 	pagedata_t* pageMetaData;
@@ -109,14 +172,16 @@ bool codepool_init (void) {
 	// add the first page
 	return codepool_addpage();
 }
-
+// FIXME: We don't allocate pages over word boundaries in the bit
+// fields. Is that okay?
 void* codepool_alloc (size_t newCodeSize) {
 
 	bool doublePage = false;
 
 	pagedata_t* pageMetaData;
-	size_t j,k;
-	unsigned char b;
+	size_t pageNum,wordNum;
+	unsigned char bitNum;
+	unsigned long *bits;
 
 	// ensure parameter is in acceptable range
 	if (newCodeSize > 32) {
@@ -136,41 +201,91 @@ void* codepool_alloc (size_t newCodeSize) {
 	}
 	
 	// we're going to iterate through all the page metadata until we
-	// find a large enough free section
-	for (j = 0; j < numPages; j++) {
+	// find a large enough free section. Let's start from the most
+	// recently allocated page. This is probably fastest. maybe.
+	// (who's got time for testing?)
+	for (pageNum = numPages-1; pageNum >= 0; pageNum--) {
+		// Setting up pointer using maths, because we can't use an
+		// array index with variably-sized data
+
 		pageMetaData = (pagedata_t*)((char*)pageMetaDataArray 
-	                         + pageDataUnitSize*j);
+	                                         + pageDataUnitSize*pageNum);
 
-		// now we are going to scan for a free index
-		k = 0;
-		while (k < numPageSlices/4) {
-			// we can scan one word at a time for a little extra speed
-			if ((pageMetaData->bitfield[k]&0x55) != 0) {
-				// There is at least one free page in here
-				for (b = 0; b < (4 - doublePage); b++) {
-					if (SUB_IS_FREE(pageMetaData->bitfield[k],b) && (doublePage == false || SUB_IS_FREE(pageMetaData->bitfield[k],b+1))) {
-						// we have found a free spot!
-						SUB_SET_ALLOC(pageMetaData->bitfield[k],b,doublePage);
+		// now we are going to scan for a free index. We scan one word a
+		// time for a little extra speed.
+		for (wordNum = 0; wordNum < numPageSlices/4; wordNum++) {
+			bits = &pageMetaData->bitfield[wordNum];
 
-						// return its address
-						return (void*)((size_t)pageMetaData->page +
-						               (k*sizeof(unsigned long)+b)*16);
-					}
-				}
+			// if none of these bits are marked free, move on
+			if ((*bits&0x55) == 0) {
+				continue;
 			}
-			k++;
+
+			// There is at least one free page in here, let's look for it.
+			// the weird math in the expression below is so we take into
+			// account a double page's need for two consecutive pages.
+			for (bitNum = 0; bitNum < (4 - doublePage); bitNum++) {
+				if (sub_is_free(*bits,bitNum) == false) {
+					continue;
+				}
+
+				if (doublePage == true) {
+					if (sub_is_free(*bits,bitNum+1) == false) {
+						continue;
+					}
+					// set second pagelet to free=false,dbl=false
+					sub_set_allocated(bits,bitNum+1,false);
+				}
+				sub_set_allocated(bits,bitNum,doublePage);
+
+				// return its address
+				return sub_to_pointer(pageMetaData,wordNum,bitNum);
+			}
 		}
 	}
-	return NULL;
+	// There are no free subpages suitable for our purposes,
+	// So let's make a new one!
+	if (codepool_addpage() == false) {
+		return 0;
+	}
+
+	// Let's try it all over again. Since we scan the most recently
+	// created pages first, and the new page is entirely free, this
+	// call is O(1)
+	return codepool_alloc(newCodeSize);
 }
 
-void codepool_free (void* codeMemory);
+void codepool_free (void* codeMemory) {
+	unsigned long* bits;
+	unsigned char bitNum;
+
+	// it's possible this address isn't actually one of our bridges.
+	// This is because we are smart sometimes and detect when a
+	// real bridge isn't necessary.
+	if (pointer_to_sub(codeMemory,&bits,&bitNum) == false) {
+		return;
+	}
+
+	// double-free! really bad!
+	if (sub_is_free(*bits,bitNum) == true) {
+		return;
+	}
+
+	codepool_unlock(codeMemory);
+
+	// clear the memory
+	memset(codeMemory, 0xCC, sub_is_dbl(*bits,bitNum) ? 32 : 16);
+
+	codepool_lock(codeMemory);
+	
+	sub_set_free(bits,bitNum);
+}
 
 void codepool_can_write (void* codeMemory, bool canWrite) {
 	#ifdef _WIN32
 		DWORD oldProtect;
 
-		VirtualProtect(ALIGN_PTR(codeMemory,pageSize),
+		VirtualProtect(codepool_align_pointer(codeMemory,pageSize),
 		               pageSize,
 		               (canWrite==true) ?
                               PAGE_EXECUTE_READWRITE :
@@ -178,7 +293,7 @@ void codepool_can_write (void* codeMemory, bool canWrite) {
 					&oldProtect
 		);
 	#else
-		mprotect(ALIGN_PTR(codeMemory,pageSize),
+		mprotect(codepool_align_pointer(codeMemory,pageSize),
 		         pageSize,
 		         (canWrite==true) ?
 		              PROT_READ | PROT_WRITE | PROT_EXEC :
