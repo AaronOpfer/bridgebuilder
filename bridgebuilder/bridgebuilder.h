@@ -46,4 +46,4 @@ void* bridge_create (void* unhookedFunction);
  * @param bridge  The bridge t0 destroy, freeing its resources.
  */
 
-void bridge_destroy (void);
+void bridge_destroy (void* bridge);

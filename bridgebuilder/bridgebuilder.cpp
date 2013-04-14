@@ -8,7 +8,7 @@ void* bridge_create (void* unhookedFunction) {
 		static const unsigned char msPrologueSignature[] = { 0x8B,0xFF,0x55,0x8B,0xEC,0x5D };
 	#endif
 
-	int operatorSize, instructionBytes = 0;
+	int operatorSize, instructionBytes = 0, bridgeSize = 5;
 	bool noRewrites = true;
 
 	unsigned char* bridge;
@@ -39,23 +39,29 @@ void* bridge_create (void* unhookedFunction) {
 		// we will have to relocate a jump
 		if (operatorSize == -2) {
 			noRewrites = false;
+			instructionBytes += x86_instruction_length(&codePtr[instructionBytes],false);
 			// TODO: write relative jmp/call rebase sizing
 			// functionality
 			return 0;
+		} else {
+			instructionBytes += operatorSize;
+			bridgeSize += operatorSize;
 		}
-		instructionBytes += operatorSize;
 	}
 
 	// now that we know how much memory we'll need to consume, we can
 	// use a slice of our shared memory page and write out the hook
 	// function.
-	bridge = (unsigned char*)codepool_alloc(instructionBytes+5);
+	bridge = (unsigned char*)codepool_alloc(bridgeSize);
 	if (!bridge) {
 		return 0;
 	}
 
-	// calculate our JMP function
-	*(unsigned long*)(&jmpBytes[1]) =  (unsigned long)unhookedFunction - (unsigned long)bridge - 5;
+	// calculate our JMP function, taking into consideration
+	// the possibility that our re-encoded bridge could be
+	// longer than the original prologue due to relative
+	// instruction rewriting
+	*(unsigned long*)(&jmpBytes[1]) =  (unsigned long)unhookedFunction - (unsigned long)bridge - (bridgeSize - instructionBytes) - 5;
 
 	if (noRewrites == true) {
 		// we don't have to rebase anything, so we can do a niave copy.
@@ -68,9 +74,10 @@ void* bridge_create (void* unhookedFunction) {
 		codepool_lock(bridge);
 	}
 	return bridge;
+}
 
-		
-	
+void bridge_destroy (void* bridge) {
+	codepool_free(bridge);
 }
 
 int x86_instruction_length_mod_reg_rm (unsigned char* cPtr) {
