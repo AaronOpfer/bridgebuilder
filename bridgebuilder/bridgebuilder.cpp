@@ -84,7 +84,6 @@ int x86_instruction_length_mod_reg_rm (unsigned char* cPtr) {
 	// we're adding up the length a few bytes at a time,
 	// starting with the opcode and MOD-REG-R/M
 	int length = 2;
-	bool hasSIB = false;
 
 	// MOD of the MOD-REG-R/M byte
 	switch (cPtr[1] >> 6) {
@@ -106,26 +105,18 @@ int x86_instruction_length_mod_reg_rm (unsigned char* cPtr) {
 	// SIB with no displacement
 	else if ((cPtr[1] & 7) == 4) {
 		length++;
-		hasSIB = true;
+		// if MOD==0 and base==0b101, then we have displacement!
+		if ((cPtr[1] >> 6) == 0 && (cPtr[2]&7) == 5) {
+			length += 4;
+		}
 	}
-	/*
-	// if MOD is 0,1 or 2, and R/M = ESP, then we have SIB
-	else if ((cPtr[1] >> 6) < 3 && (cPtr[1] & 7) == 5) {
-		length++;
-		hasSIB = true;
-	}*/
 
-	// if MOD==0 and base==0b101, then we have displacement!
-	if (hasSIB && (cPtr[1] >> 6) == 0 && (cPtr[2]&7) == 5) {
-		length += 4;
-	}
+
 
 	return length;
 }
 
 int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
-	bool operandSizePrefix = false, addressSizePrefix = false;
-
 	int length = 0, j;
 
 	char operandSize = 4, addressSize = 4;
@@ -137,12 +128,10 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 	for (j = 0; ; j++) {
 		switch (cPtr[j]) {
 			case 0x66:
-				operandSizePrefix = true;
 				operandSize = 2;
 				length++;
 				continue;
 			case 0x67:
-				addressSizePrefix = true;
 				addressSize = 2;
 				length++;
 				continue;
@@ -162,214 +151,162 @@ int x86_instruction_length (void* codePtr, bool stopOnUnrelocateable) {
 	// move our pointer ahead
 	cPtr = &cPtr[j];
 
-	// handle static-sized opcodes
-	switch (*cPtr) {
-		//-----------------------------------------
-		// single-byte instructions
-		//-----------------------------------------
 
-		// 1-byte INC instructions
-		case 0x40: case 0x41: case 0x42: case 0x43: 
-		case 0x44: case 0x45: case 0x46: case 0x47:
-		// 1-byte DEC instructions
-		case 0x48: case 0x49: case 0x4A: case 0x4B:
-		case 0x4C: case 0x4D: case 0x4E: case 0x4F:
-		// 1-byte PUSH instructions
-		case 0x06: case 0x0E: case 0x16: case 0x1E:
-		case 0x50: case 0x51: case 0x52: case 0x53: 
-		case 0x54: case 0x55: case 0x56: case 0x57:
-		// 1-byte POP instructions
-		case 0x07: case 0x17: case 0x1F:
-		case 0x58: case 0x59: case 0x5A: case 0x5B:
-		case 0x5C: case 0x5D: case 0x5E: case 0x5F:
-		// INS/OUTS
-		case 0x6C: case 0x6D: case 0x6E: case 0x6F:
-		// RETF, RETN
-		case 0xC3: case 0xCB:
-		// NOP
-		case 0x90:
-		// XCHG AX, reg16
-		case 0x91: case 0x92: case 0x93: case 0x94:
-		case 0x95: case 0x96: case 0x97:
-		// CBW & CWDE, CDQ & CWD
-		case 0x98: case 0x99:
-		// PUSH[AF] and POP[AF]
-		case 0x60: case 0x61: case 0x9C: case 0x9D:
-		// [AD]A[AS]
-		case 0x27: case 0x2F: case 0x37: case 0x3F:
-		// {MOV,CMP}S[BWD]
-		case 0xA4: case 0xA5: case 0xA6: case 0xA7:
-		// {STO,LOD,SCA}S[BWD]
-		case 0xAA: case 0xAB: case 0xAC: case 0xAD: case 0xAE:
-		// CMC, CLC, STC, CLD, STD
-		case 0xF5: case 0xF8: case 0xF9: case 0xFC: case 0xFD:
-		// INT1, INT3
-		case 0xF1: case 0xCC:
-		// XLAT
-		case 0xD7:
-			length +=1;
-			break;
+	// handle 0x0F opcode set
+	if (*cPtr == 0x0F) {
+		// move our pointer ahead again
+		cPtr = &cPtr[1];
 
-		//-----------------------------------------
-		// two-byte instructions, single opcode
-		//-----------------------------------------
+		if (   (*cPtr & 0xF0) == 0x90 // 90-9F
+		    || (*cPtr & 0xF6) == 0xB6 // B6,B7,BE,BF
+		   ) {
+			return length+1+x86_instruction_length_mod_reg_rm(cPtr);
+		}
 
-		// AL w/ imm8
-		case 0x04: case 0x0C: case 0x14: case 0x1C:
-		case 0x24: case 0x2C: case 0x34: case 0x3C:
-		case 0xA8:
-		// MOV reg8, imm8
-		case 0xB0: case 0xB1: case 0xB2: case 0xB3:
-		case 0xB4: case 0xB5: case 0xB6: case 0xB7:
-		// PUSH imm8
-		case 0x6A:
-			length += 2;
-			break;
-
-		//-----------------------------------------
-		// three-byte instructions
-		//-----------------------------------------
-
-		// RET[N/F] imm16
-		case 0xC2: case 0xCA:
-			length += 3;
-			break;
-
-		//-----------------------------------------
-		// five-byte instructions
-		//-----------------------------------------
-
-		// PUSH imm32
-		case 0x68:
-			length += 5;
-			break;
-
-		//-----------------------------------------
-		// 0F instructions
-		//-----------------------------------------
-		case 0x0F:
-			switch (cPtr[1]) {
-				// MOD-REG-R/M instructions
-				case 0xB6: case 0xB7: case 0xBE: case 0xBF:
-				// conditional SET instructions
-				case 0x90: case 0x91: case 0x92: case 0x93:
-				case 0x94: case 0x95: case 0x96: case 0x97:
-				case 0x98: case 0x99: case 0x9A: case 0x9B:
-				case 0x9C: case 0x9D: case 0x9E: case 0x9F:
-					length += 1 + x86_instruction_length_mod_reg_rm(&cPtr[1]);
-					break;
-				// conditional far jumps. Unrelocateable!
-				case 0x80: case 0x81: case 0x82: case 0x83:
-				case 0x84: case 0x85: case 0x86: case 0x87:
-				case 0x88: case 0x89: case 0x8A: case 0x8B:
-				case 0x8C: case 0x8D: case 0x8E: case 0x8F:
-					if (stopOnUnrelocateable == true) {
-						return -2;
-					}
-					length += 6;
-					break;
-
-				default:
-					printf("Opcode 0F %02X @ 0x%08X = ???\n", cPtr[1],cPtr);
-					return -1;
-			}
-			break;
-
-		//-----------------------------------------
-		// variable-length instructions
-		//-----------------------------------------
-
-		// operations on [E]AX with operand imm{16,32}
-		case 0x05: case 0x0D: case 0x15: case 0x1D:
-		case 0x25: case 0x2D: case 0x36: case 0x3D:
-		case 0xA9:
-		// MOV reg16/reg32, imm16/mm32
-		case 0xB8: case 0xB9: case 0xBA: case 0xBB:
-		case 0xBC: case 0xBD: case 0xBE: case 0xBF:
-			length += 1 + operandSize;
-			break;
-
-		// MOV [E]AX, ptr [] (either direction)
-		case 0xA0: case 0xA1: case 0xA2: case 0xA3:
-			length += 1 + addressSize;
-			break;
-
-		// MOD-REG-R/M operations
-		case 0x00: case 0x01: case 0x02: case 0x03: // ADD
-		case 0x08: case 0x09: case 0x0A: case 0x0B: // OR
-		case 0x10: case 0x11: case 0x12: case 0x13: // ADC
-		case 0x18: case 0x19: case 0x1A: case 0x1B: // SBB
-		case 0x20: case 0x21: case 0x22: case 0x23: // AND
-		case 0x28: case 0x29: case 0x2A: case 0x2B: // SUB
-		case 0x30: case 0x31: case 0x32: case 0x33: // XOR
-		case 0x38: case 0x39: case 0x3A: case 0x3B: // CMP
-		case 0x84: case 0x85: case 0x86: case 0x87: // TEST, XCHG
-		case 0x88: case 0x89: case 0x8A: case 0x8B: // MOV
-		case 0x62: // BOUND
-		case 0x63: // ARPL ?
-		case 0xFF: // opcode extension
-		case 0x8D: // LEA ?
-			length += x86_instruction_length_mod_reg_rm(cPtr);
-			break;
-
-		// opcode extensions w/ imm8
-		case 0x80: case 0x82: case 0x83: case 0xC0:
-		case 0xC1: case 0xC6: case 0x6B:
-			length += 1 + x86_instruction_length_mod_reg_rm(cPtr);
-			break;
-		// opcode extensions w/ imm16/32
-		case 0x81: case 0xC7: case 0x69:
-			length += operandSize + x86_instruction_length_mod_reg_rm(cPtr);
-			break;
-
-		// opcode extension w/ variable arguments
-		case 0xF6: case 0xF7:
-			length += x86_instruction_length_mod_reg_rm(cPtr);
-			if (!(cPtr[1]&0x30)) {
-				// F6 is always 8bit, F7 is 16 or 32
-				if (*cPtr == 0xF6) {
-					length += 1;
-				} else {
-					length += operandSize;
-				}
-			}
-			break;
-
-			
-
-		//-----------------------------------------
-		// unrelocateable instructions
-		//-----------------------------------------
-
-		// conditional short jumps
-		case 0x70: case 0x71: case 0x72: case 0x73:
-		case 0x74: case 0x75: case 0x76: case 0x77:
-		case 0x78: case 0x79: case 0x7A: case 0x7B:
-		case 0x7C: case 0x7D: case 0x7E: case 0x7F:
-		case 0xE3: // wtf is JECXZ?
-		// unconditional short jump
-		case 0xEB:
+		if ((*cPtr & 0xF0) == 0x80) {
 			if (stopOnUnrelocateable == true) {
 				return -2;
 			}
-			length += 2;
-			break;
-		
-		// far CALL and JMP
-		case 0xE8: case 0xE9:
-			if (stopOnUnrelocateable == true) {
-				return -2;
-			}
-			length += 5;
-			break;
+			return length+6;
+		}
 
-		//-----------------------------------------
-		// failure
-		//-----------------------------------------
-		default:
-			printf("Opcode %02X @ 0x%08X = ???\n", *cPtr,cPtr);
-			return -1;
+		printf("Opcode 0F %02X @ 0x%08X = ???\n", *cPtr,&cPtr[-1]);
+		return -1;
 	}
+
+	// FIXME: We don't properly decode FAR CALL 0x9A, but
+	// is it ever used in the wild?
+
+
+	// These opcodes refuse to be matchable with bitmasks
+	switch(*cPtr) {
+		case 0xC3: case 0xD7:
+			return length+1;
+		case 0xA8: case 0x6A:
+			return length+2;
+		case 0xC8:
+			return length+4;
+		case 0x68:
+			return length+5;
+		// opcode extensions w/ imm16/32
+		case 0x69:
+			return length + operandSize + x86_instruction_length_mod_reg_rm(cPtr);
+			break;
+		// opcode extensions w/ imm8
+		case 0x6B:
+			return length + 1 + x86_instruction_length_mod_reg_rm(cPtr);
+			break;
+	}
+		
+
+	//* experimental bit-matching for 1byte opcodes
+	if (   (*cPtr & 0xC6) == 6 // 06,07,0E,0F...36,37,3E,3F
+	    || (*cPtr & 0xE0) == 0x40 // 0x40-0x5F
+	    || (*cPtr & 0xFE) == 0x60 // 60-61
+	    || (*cPtr & 0x7C) == 0x6C // 6C-6F, EC-EF
+	    || (*cPtr & 0xF0) == 0x90 // 90 - 9F
+	    || (*cPtr & 0xF4) == 0xA4 // A4-A7,AC-AF
+	    || (*cPtr & 0xFE) == 0xAA // AA,AB
+	    || (*cPtr & 0xFD) == 0xC9 // C9, CB
+	    || (*cPtr & 0xFD) == 0xCC // CC, CE
+	    || (*cPtr & 0xF4) == 0xF0 // F0-F3,F8-FB
+	    || (*cPtr & 0xF6) == 0xF4 // F4-F5,FC-FD
+	   ) {
+		return length+1;
+	}
+
+	// relative 2 byte JMPs
+	if (   (*cPtr & 0xF0) == 0x70 // 70-7F
+	    || (*cPtr & 0xF7) == 0xE3 // E3, EB
+	   ) {
+		if (stopOnUnrelocateable == true) {
+			return -2;
+		}
+		return length+2;
+	}
+
+	//* experimental bit-matching for 2byte opcodes
+	if (   (*cPtr & 0xC7) == 4    // 4,C,14,1C,24...34,3C
+	    || (*cPtr & 0xF8) == 0xB0 // B0-B7
+	    || (*cPtr & 0xFD) == 0xCD // CD, CF
+	    || (*cPtr & 0xFD) == 0xD0 // D0, D2
+	    || (*cPtr & 0xF8) == 0xE0 // E0-E7
+	   ) {
+		return length+2;
+	}
+
+
+	//* experimental bit-matching for 3byte opcodes
+	if ((*cPtr & 0xF7) == 0xC2) { // C2,CA
+		return length+3;
+	}
+
+	// MOD-REG-RM
+	if (   (*cPtr & 0xC4) == 0 // 00-03,08-0B,...30-33,38-3B
+	    || (*cPtr & 0xFE) == 0x62 // 62,53
+	    || (*cPtr & 0xFC) == 0x84 // 84-87
+	    || (*cPtr & 0xF8) == 0x88 // 88-8F
+	    || (*cPtr & 0xFE) == 0xFE // FE-FF
+	  ) {
+		return length+x86_instruction_length_mod_reg_rm(cPtr);
+	}
+
+	// 1 + MOD-REG-RM
+	if (   (*cPtr & 0xFE) == 0x82 // 82, 83
+	    || (*cPtr & 0xFE) == 0xC0 // C0, C1
+	   ) {
+		return length+1+x86_instruction_length_mod_reg_rm(cPtr);
+	}
+
+	// M+1 and M+operandsize placed consecutively
+	if (   (*cPtr & 0xFE) == 0x80 // 80, 81
+	    || (*cPtr & 0xFE) == 0xC6 // C6, C7
+	   ) {
+		return length
+		       + x86_instruction_length_mod_reg_rm(cPtr)
+		       + (((*cPtr&1)==1) ? operandSize : 1);
+	}
+
+	// 1 + address size
+	if (   (*cPtr & 0xFC) == 0xA0 // A0-A3
+	    || (*cPtr & 0xF7) == 0x35 // 35, 3D.
+	   ) {
+		return length+1+addressSize;
+	}
+
+	// 1 + operand size
+	if (   (*cPtr & 0xF8) == 0xB8 // B8-BF
+	    || (*cPtr & 0xC7) == 0x05 // MUST be after evaluating 35 & 3D.
+	    || *cPtr == 0xA9
+        ) {
+		return length+1+operandSize;
+	}
+
+	// bizarre opcode extension stuff
+	if ((*cPtr & 0xFE) == 0xF6) { // F6, F7
+		// opcode extension w/ variable arguments
+		length += x86_instruction_length_mod_reg_rm(cPtr);
+		if (!(cPtr[1]&0x30)) {
+			// F6 is always 8bit, F7 is 16 or 32
+			if (*cPtr == 0xF6) {
+				length += 1;
+			} else {
+				length += operandSize;
+			}
+		}
+		return length;
+	}
+
+	if ((*cPtr & 0xFE) == 0xE8) { //E8,E9
+		if (stopOnUnrelocateable == true) {
+			return -2;
+		}
+		return length+5;
+	}
+
+
+	printf("Opcode %02X @ 0x%08X = ???\n", *cPtr,cPtr);
+	return -1;
 
 	return length;
 }
