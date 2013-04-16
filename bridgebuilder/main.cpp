@@ -22,7 +22,7 @@ bool run_import_test (const char* importName, void* fxnPtr) {
 
 	while ((unsigned long)codePtr < (unsigned long)fxnPtr + TEST_MINIMUM_BYTES_DECODED) {
 		j = x86_instruction_length(codePtr,false);
-		if (j == -1) {
+		if (j <= 0) {
 			printf("Failure!");
 			return false;
 		}
