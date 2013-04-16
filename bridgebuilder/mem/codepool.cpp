@@ -217,7 +217,8 @@ void* codepool_alloc (size_t newCodeSize) {
 			bits = &pageMetaData->bitfield[wordNum];
 
 			// if none of these bits are marked free, move on
-			if ((*bits&0x55) == 0) {
+			// FIXME: this assumes a 32 bit word length, what about x64?
+			if ((*bits&0x55555555) == 0) {
 				continue;
 			}
 
