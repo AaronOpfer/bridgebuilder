@@ -66,8 +66,8 @@ __inline bool pointer_to_sub (void* ptr, unsigned long** word,unsigned char* bit
 
 __inline void* sub_to_pointer (pagedata_t* pageMetaData, size_t wordNum, size_t bitNum) {
 
-	return (void*)((size_t)pageMetaData->page +
-								(wordNum*sizeof(unsigned long)+bitNum)*16);
+	return (void*)((size_t)pageMetaData->page 
+	               + (wordNum*sizeof(unsigned long)+bitNum)*16);
 }
 	
 
